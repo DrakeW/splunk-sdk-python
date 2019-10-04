@@ -16,6 +16,7 @@
 
 from __future__ import absolute_import, division, print_function
 
+from io import TextIOWrapper
 from collections import deque, namedtuple
 from splunklib import six
 try:
@@ -791,9 +792,35 @@ class RecordWriterV2(RecordWriter):
             return
 
         start_line = 'chunked 1.0,%s,%s\n' % (metadata_length, body_length)
-        write = self._ofile.write
-        write(start_line)
-        write(metadata)
-        write(body)
+        ofile_handle = set_binary_mode(self._ofile)
+        write = ofile_handle.write
+        write(start_line.encode('utf-8'))
+        write(metadata.encode('utf-8'))
+        write(body.encode('utf-8'))
         self._ofile.flush()
         self._flushed = False
+
+def set_binary_mode(fh):
+    """ Helper method to set up binary mode for file handles.
+    Emphasis being sys.stdin, sys.stdout, sys.stderr.
+    For python3, we want to return .buffer
+    For python2+windows we want to set os.O_BINARY
+    """
+    typefile = TextIOWrapper if sys.version_info >= (3, 0) else file
+    # check for file handle
+    if not isinstance(fh, typefile):
+        return fh
+
+    # check for python3 and buffer
+    if sys.version_info >= (3, 0) and hasattr(fh, 'buffer'):
+        return fh.buffer
+    # check for python3
+    elif sys.version_info >= (3, 0):
+        pass
+    # check for windows
+    elif sys.platform == 'win32':
+        import msvcrt
+        msvcrt.setmode(fh.fileno(), os.O_BINARY)
+
+    return fh
+
